@@ -4,6 +4,12 @@ LOADER_BASE_ADDR equ 0x900 ;设置 loader 的基地址
 LOADER_START_SECTOR equ 0x2 ; 设置 loader 的起始扇区号,从第二个扇区开始因为 第一个扇区是 boot.asm 编译出来的程序
 ;为了防止 loader 覆盖 boot.asm 编译出来的程序所以 loader 从第二个扇区开始
 
+
+KERNEL_START_SECTOR equ 0x9     ;从第九扇区开始加载内核
+KERNEL_BIN_BASE_ADDR equ 0x70000    ; 内核的虚拟地址
+KERNEL_ENTER_ADDR equ 0xc0001500    ; 内核入口地址
+PT_NULL equ 0x0
+
 PAGE_DIR_TABLE_POS equ 0x100000 ; 页目录表的位置，出了低端1MB的第一字节.
 
 ;----------------------gdt描述属性--------------------
