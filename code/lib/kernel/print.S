@@ -3,15 +3,15 @@ RPL0 equ 0
 SELECTOR_VIDEO equ (0x0003<<3) + TI_GDT + RPL0
 
 section .data
-put_int_buffer dq 0
+put_int_buffer dq  0        ;定义8一个缓冲区，用于存储要打印的整数
 
 [bits 32]
 section .text
 ;---------- putchar -----------------
 ;功能描述：把栈中的一个字符写入光标所在的位置
 ;------------------------------------
-global putchar
-putchar:
+global put_char
+put_char:
     pushad      ;备份而32位寄存器环境;将所有的32位的寄存器进行备份
     ;需要保证gs中为正确的视频段选择子，为保险起见，每次打印时都需要为gs赋值
     mov ax, SELECTOR_VIDEO  ;不能把立即数送入段寄存器
@@ -72,7 +72,7 @@ putchar:
     jl .set_cursor  ;若光标值小于2000，表示未写到显存的最后，则去设置新的光标值
 
 .is_line_feed:
-.is_carriage_retuen:
+.is_carriage_return:
 ;如果是CR(\r),只要把光标移到行首
     xor dx, dx  ;dx是被除数的高16位，清0,异或操作
     mov ax, bx  ;ax是被除数的低16位
@@ -91,8 +91,8 @@ putchar:
 .roll_screen:
     cld
     mov ecx, 960    ;一共需要搬运1920个字符，3840字节，依次搬4字节，共960次
-    mov esi, 0xc00b80a0 ;第一行行首
-    mov edi, 0xc00b8000 ;第零行行首
+    mov esi, 0xb80a0 ;第一行行首;c00b80a0
+    mov edi, 0xb8000 ;第零行行首
     rep movsd   ;rep movsd是重复ecx次，将esi指向的内存搬移到edi指向的内存
 
 ;将最后一行填充为空白
@@ -111,7 +111,7 @@ putchar:
     mov al, 0x0e    ;用于提供光标位置的高8位
     out dx, al
     mov dx, 0x3d5   ;通过读写数据端口0x3d5来获得或设置光标位置
-    mov al, ah
+    mov al, bh
     out dx, al
 
 ;------ 再设置低8位 ------
@@ -168,7 +168,7 @@ put_int:
 
 ;将32位数字按照十六进制的形式从低位到高位逐个处理，一共处理8个十六进制数字
 .16based_4bits: ;每4为二进制是16进制数字的一位
-    and edx, 0x0000000f ;解析十六进制数字的每一位，and与操作后，edx只有低四位有效
+    and edx, 0x0000000F ;解析十六进制数字的每一位，and与操作后，edx只有低四位有效
     cmp edx, 9  ;数字0~9和a~f需要分别处理成对应的字符
     jg .is_A2F
     add edx, '0' ;数字0~9，直接加上字符'0'的ascii码,ascii是8位大小，add求和操作后，edx低8位有效
