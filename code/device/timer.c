@@ -16,6 +16,8 @@
 
 uint32_t ticks;                             //ticks是内核自中断开启以来总共的滴答数
 
+#define mil_seconds_per_intr    (1000 / IRQ0_FREQUENCY) //每次时钟中断的时间(单位：毫秒)
+
 //把操作的计数器counter_no、读写锁属性rwl、计数器模式counter_mode写入模式控制寄存器并赋予初始值counter_value
 static void frequency_set(uint8_t counter_port, \
               uint8_t counter_no, \
@@ -31,7 +33,7 @@ static void frequency_set(uint8_t counter_port, \
     //outb(counter_port, (uint8_t)counter_value >> 8);
     //这句代码会先将16位的counter_value强制类型转换为8位值，也就是原来16位值只留下了低8位
     //然后又右移8未，所以最后送入counter_port的counter_value的高8位是8个0，这会导致时钟频率过高，出现GP异常
-    outb(counter_port, (uint8_t) (counter_value>>8) );
+    outb(counter_port, (uint8_t)counter_value>>8);	//不用给counter_value带括号
 }
 
 //时钟中断处理函数
@@ -49,6 +51,23 @@ static void intr_timer_handler(void){
     else {
         cur_thread->ticks--;
     }
+}
+
+//以tick为单位的sleep,任何时间形式的sleep会转换为此ticks形式,让任务休眠ticks个滴答数
+static void ticks_to_sleep(uint32_t sleep_ticks) {
+    uint32_t start_tick = ticks;
+
+    //若间隔的ticks数不够便让出CPU
+    while(ticks - start_tick < sleep_ticks) {
+        thread_yield();
+    }
+}
+
+//以毫秒为单位的sleep 1-1000
+void mtime_sleep(uint32_t m_seconds) {
+    uint32_t sleep_ticks = DIV_ROUND_UP(m_seconds, mil_seconds_per_intr);
+    ASSERT(sleep_ticks > 0);
+    ticks_to_sleep(sleep_ticks);
 }
 
 //初始化PIT8253
