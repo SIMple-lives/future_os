@@ -10,7 +10,7 @@ void panic_spin(char* filename, int line, const char* func, const char* conditio
 /***********************************************************************/
 
 #ifdef NDEBUG
-#define ASSERT(CONDITION) ((void)0)        //让assert成为空，什么也不做.
+#define ASSERT(CONDITION) ((void)0)
 #else
 #define ASSERT(CONDITION)                                      \
 if (CONDITION) {} else {                                    \

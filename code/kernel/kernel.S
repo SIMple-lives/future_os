@@ -82,4 +82,51 @@ VECTOR 0x1c,ZERO
 VECTOR 0x1d,ERROR_CODE
 VECTOR 0x1e,ERROR_CODE
 VECTOR 0x1f,ZERO
-VECTOR 0x20,ZERO
+VECTOR 0x20,ZERO    ;时钟中断对应的入口
+
+;8259A的中断屏蔽寄存器
+VECTOR 0x21,ZERO	;键盘中断对应的入口
+VECTOR 0x22,ZERO	;级联用的
+VECTOR 0x23,ZERO	;串口2对应的入口
+VECTOR 0x24,ZERO	;串口1对应的入口
+VECTOR 0x25,ZERO	;并口2对应的入口
+VECTOR 0x26,ZERO	;软盘对应的入口
+VECTOR 0x27,ZERO	;并口1对应的入口
+VECTOR 0x28,ZERO	;实时时钟对应的入口
+VECTOR 0x29,ZERO	;重定向
+VECTOR 0x2a,ZERO	;保留
+VECTOR 0x2b,ZERO	;保留
+VECTOR 0x2c,ZERO	;ps/2鼠标
+VECTOR 0x2d,ZERO	;fpu浮点单元异常
+VECTOR 0x2e,ZERO	;硬盘
+VECTOR 0x2f,ZERO	;保留
+
+;;;;;;    0x80号中断     ;;;;;;
+[bits 32]
+extern syscall_table
+section .text
+global syscall_handler
+syscall_handler:
+    ;保存上下文环境
+    push 0              ;压入0,使栈中格式统一，压入错误码
+
+    push ds
+    push es
+    push fs
+    push gs
+    pushad              ;pushad指令将EAX,ECX,EDX,EBX,ESP,EBP,ESI,EDI依次压入栈中
+
+    push 0x80            ;压入中断号
+
+    ;为系统调用压入参数
+    push edx            ;第三个参数
+    push ecx            ;第二个参数
+    push ebx            ;第一个参数          ;寄存器名称写错
+
+    ;调用子功能处理函数
+    call [syscall_table + eax*4]    ;编译器会在栈中根据c函数声明匹配正确数量的参数
+    add esp, 12                     ;跳过上面三个参数
+
+    ;将call调用后的返回值存入待当前内核栈中eax的位置
+    mov [esp + 8*4], eax
+    jmp intr_exit                   ;返回恢复上下文
