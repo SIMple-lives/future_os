@@ -52,7 +52,7 @@ int bitmap_scan(struct bitmap* btmp, uint32_t cnt) {
    while (bit_left-- > 0) {
       if (!(bitmap_scan_test(btmp, next_bit))) {	 // 若next_bit为0
 	      count++;
-      } 
+      }
       else {
 	      count = 0;
       }

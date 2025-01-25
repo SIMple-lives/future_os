@@ -1,6 +1,6 @@
 #ifndef __LIB_KERNEL_BITMAP_H
 #define __LIB_KERNEL_BITMAP_H
-#include "global.h"
+#include "../kernel/global.h"
 #define BITMAP_MASK 1
 struct bitmap {
       uint32_t btmp_bytes_len;

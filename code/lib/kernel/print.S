@@ -91,8 +91,8 @@ put_char:
 .roll_screen:
     cld
     mov ecx, 960    ;一共需要搬运1920个字符，3840字节，依次搬4字节，共960次
-    mov esi, 0xb80a0 ;第一行行首;c00b80a0
-    mov edi, 0xb8000 ;第零行行首
+    mov esi, 0xc00b80a0 ;第一行行首;c00b80a0 //一定是0xc00b80a0
+    mov edi, 0xc00b8000 ;第零行行首          //一定是0xc00b8000
     rep movsd   ;rep movsd是重复ecx次，将esi指向的内存搬移到edi指向的内存
 
 ;将最后一行填充为空白
