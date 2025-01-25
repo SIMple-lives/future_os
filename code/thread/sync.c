@@ -25,7 +25,7 @@ void sema_down(struct semaphore* psema) {
       ASSERT(!elem_find(&psema->waiters, &running_thread()->general_tag));
       /* 当前线程不应该已在信号量的waiters队列中 */
       if (elem_find(&psema->waiters, &running_thread()->general_tag)) {
-	    PANIC("sema_down: thread blocked has been in waiters_list\n");
+	 PANIC("sema_down: thread blocked has been in waiters_list\n");
       }
 /* 若信号量的值等于0,则当前线程把自己加入该锁的等待队列,然后阻塞自己 */
       list_append(&psema->waiters, &running_thread()->general_tag);

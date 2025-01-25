@@ -19,7 +19,7 @@ switch_to:
     ;0级栈中保存了进程或线程所有信息，包括3级栈指针
     pop ebp
     pop ebx
-    pop edi
+    pop edi 
     pop esi
     ret         ;返回到上面switch_to函数下面的那句注释的返回地址
                 ;未由中断进入，第一次执行时会返回到kernel_thread

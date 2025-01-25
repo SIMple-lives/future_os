@@ -7,8 +7,13 @@
 #include "print.h"
 #include "memory.h"
 #include "../userprog/process.h"
+#include "sync.h"
 
 #define PG_SIZE 4096
+
+struct lock pid_lock;        //分配pid锁
+
+struct task_struct* idle_thread;    //idle线程
 
 struct task_struct* main_thread;    //主线程PCB
 struct list thread_ready_list;     //可运行队列
@@ -16,6 +21,15 @@ struct list thread_all_list;        //全部队列
 static struct list_elem* thread_tag;    //线程标签
 
 extern void switch_to(struct task_struct* cur, struct task_struct* next);
+
+//系统空闲运行的线程
+static void idle(void* arg UNUSED) {
+    while(1){
+        thread_block(TASK_BLOCKED);
+        //执行hlt时必须要保证目前在开中断的情况下
+        asm volatile ("sti; hlt" : : : "memory");
+    }
+}
 
 //获取当前线程pcb指针
 struct task_struct* running_thread () {
@@ -30,6 +44,15 @@ static void kernel_thread(thread_func* function, void* func_arg) {
     //执行function前要开中断，避免后面的时钟中断被屏蔽，无法调度其他线程
     intr_enable();
     function(func_arg);
+}
+
+//分配pid
+static pid_t allocate_pid(void) {
+    static pid_t nextpid = 0;
+    lock_acquire(&pid_lock);
+    nextpid++;
+    lock_release(&pid_lock);
+    return nextpid;
 }
 
 //初始化线程栈thread_stack       将待执行的函数和参数放到线程栈中相应的位置
@@ -56,6 +79,7 @@ void init_thread(struct task_struct* pthread, char* name, int prio) {
 //     pthread->self_kstack = (uint32_t*)((uint32_t)pthread + PG_SIZE);
 //     pthread->stack_magic = 0x19870916;                    //栈的魔数，用于检测栈是否溢出
     memset(pthread, 0, sizeof(struct task_struct));        //初始化线程结构体， 置0
+    pthread->pid = allocate_pid();
     strcpy(pthread->name, name);
 
     if(pthread == main_thread){
@@ -66,11 +90,24 @@ void init_thread(struct task_struct* pthread, char* name, int prio) {
         pthread->status = TASK_READY;
     }
 
+    //self_kstack是线程自己在内核态下使用的栈顶地址
     pthread->self_kstack = (uint32_t*)((uint32_t)pthread + PG_SIZE);
     pthread->priority = prio;
     pthread->ticks = prio;
     pthread->elapsed_ticks = 0;
     pthread->pgdir = NULL;
+
+    //预留标准输入、输出、错误
+    pthread->fd_table[0] = 0;
+    pthread->fd_table[1] = 1;
+    pthread->fd_table[2] = 2;
+    //其余全置为-1
+    uint8_t fd_idx = 3;
+    while(fd_idx < MAX_FILES_OPEN_PER_PROC){
+        pthread->fd_table[fd_idx] = -1;
+        fd_idx++;
+    }
+    
     pthread->stack_magic = 0x19870916;
 }
 
@@ -125,6 +162,12 @@ void schedule(){
     else{
 
     }
+
+    //如果就绪队列中没有可运行的任务，就唤醒idle
+    if(list_empty(&thread_ready_list)) {
+        thread_unblock(idle_thread);
+    }
+
     ASSERT(!list_empty(&thread_ready_list));
     thread_tag = NULL;
     //从就绪队列中取出一个线程
@@ -134,7 +177,7 @@ void schedule(){
 
     //激活任务页表
     process_activate(next);
-    
+
     switch_to(cur, next);
 }
 
@@ -165,11 +208,27 @@ void thread_unblock(struct task_struct* pthread) {
     intr_set_status(old_status);
 }
 
+//主动让出CPU,换其他线程运行
+void thread_yield(void) {
+    struct task_struct* cur =running_thread();
+    enum intr_status old_status = intr_disable();
+    ASSERT(!elem_find(&thread_ready_list, &cur->general_tag));
+    list_append(&thread_ready_list, &cur->general_tag);
+    cur->status = TASK_READY;
+    schedule();
+    intr_set_status(old_status);
+}
+
 void thread_init(void) {
     put_str("thread_init start\n");
     list_init(&thread_ready_list);
     list_init(&thread_all_list);
+    lock_init(&pid_lock);
     //将当前main函数创建为线程
     make_main_thread();
+
+    //创建idle线程
+    idle_thread = thread_start("idle",10,idle,NULL);
+
     put_str("thread_init end\n");
 }

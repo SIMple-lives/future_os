@@ -5,8 +5,11 @@
 #include "bitmap.h"
 #include "memory.h"
 
+#define MAX_FILES_OPEN_PER_PROC    8
+
 //自定义通用函数类型，它将在很多线程函数中作为形参类型
 typedef void thread_func(void* );        //指定在线程中运行的函数类型
+typedef int16_t pid_t;
 
 //进程或线程的状态
 enum task_status {
@@ -75,6 +78,7 @@ struct thread_stack {
 //进程或线程的pcb,程序控制块
 struct task_struct {
     uint32_t* self_kstack;        //各内核线程都用自己的内核栈
+    pid_t pid;
     enum task_status status;
     uint8_t priority;             //线程优先级
     char name[16];                //线程名
@@ -84,6 +88,7 @@ struct task_struct {
      * 也就是此任务执行了多久*/
     uint32_t elapsed_ticks;
 
+    int32_t fd_table[MAX_FILES_OPEN_PER_PROC];  //文件描述符数组
     /* general_tag的作用是用于线程在一般的队列中的结点 */
     struct list_elem general_tag;
 
@@ -93,6 +98,7 @@ struct task_struct {
     uint32_t* pgdir;              //进程页表,自己页表的虚拟地址
 
     struct virtual_addr userprog_vaddr;        //用户进程的虚拟地址
+    struct mem_block_desc u_block_desc[DESC_CNT]; //用户进程的内存块描述符
     uint32_t stack_magic;        //栈的边界标记，用于检测栈是否溢出,栈一般位于页的顶端 ，栈向下生长
 };
 
@@ -107,4 +113,5 @@ void schedule(void);
 void thread_init(void);
 void thread_block(enum task_status stat);
 void thread_unblock(struct task_struct* pthread);
+void thread_yield(void);
 #endif
