@@ -25,6 +25,13 @@ enum oflags {
     O_CREAT = 4    //如果文件不存在，则创建
 };
 
+//文件读写位置偏移量
+enum whence {
+    SEEK_SET = 1, //文件开头
+    SEEK_CUR,     //当前位置
+    SEEK_END      //文件结尾
+};
+
 //用来记录查找文件过程中已经找到的上级路径，也就是文件查找过程中"走过的地方“
 struct path_search_record {
     char searched_path[MAX_PATH_LEN];    //已经查找过的父路径
@@ -32,10 +39,30 @@ struct path_search_record {
     enum file_types file_type;			 //找到的是普通文件还是目录。找不到将为FT_UNKNOWN
 };
 
+//文件属性结构体
+struct stat {
+    uint32_t st_ino;        // inode编号
+    uint32_t st_size;       // 文件大小
+    enum file_types st_filetype; // 文件类型
+};
+
 extern struct partition* cur_part;
 void filesys_init(void);
 int32_t path_depth_cnt(char* pathname);
 int32_t sys_open(const char* pathname, uint8_t flags);
 int32_t sys_close(int32_t fd);
+int32_t sys_write(int32_t fd, const void* buf, uint32_t count);
+int32_t sys_read(int32_t fd, void* buf, uint32_t count);
+int32_t sys_lseek(int32_t fd, int32_t offset, uint8_t whence);
+int32_t sys_unlink(const char* pathname);
+int32_t sys_mkdir(const char* pathname);
+struct dir* sys_opendir(const char* pathname);
+int32_t sys_closedir(struct dir* dir);
+struct dir_entry* sys_readdir(struct dir* dir);
+void sys_rewinddir(struct dir* dir);
+int32_t sys_rmdir(const char* pathname);
+char* sys_getcwd(char* buf, uint32_t size);
+int32_t sys_chdir(const char* path);
+int32_t sys_stat(const char* path, struct stat* buf);
 #endif
 
