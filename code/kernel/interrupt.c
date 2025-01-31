@@ -165,6 +165,7 @@ enum intr_status intr_enable() {
    enum intr_status old_status;
    if (INTR_ON == intr_get_status()) {
       old_status = INTR_ON;
+      put_str("dsalkdjl\n");
       return old_status;
    } else {
       old_status = INTR_OFF;

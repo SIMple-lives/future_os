@@ -23,7 +23,9 @@ void init_all() {
       keyboard_init();	      // 初始化键盘
       tss_init();             // 初始化tss
       syscall_init();		// 初始化系统调用
+      // put_str("init_all done\n");
       intr_enable();	      // 开启中断ide需要
+      // put_str("init_all done\n");
       ide_init();		      // 初始化硬盘
       filesys_init();	      // 初始化文件系统
 }
