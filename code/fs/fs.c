@@ -12,7 +12,11 @@
 #include "memory.h"
 #include "file.h"
 #include "console.h"
+#include "keyboard.h"
+#include "ioqueue.h"
+#include "pipe.h"
 
+// extern struct ioqueuq kbd_buf;
 extern struct list partition_list;   //分区链表
 struct partition* cur_part;            //默认情况下操作的是哪个分区
 
@@ -190,7 +194,7 @@ static void partition_format(struct partition* part) {
 }
 
 //将最上层路径名称解析出来
-static char* path_parse(char* pathname, char* name_store) {
+char* path_parse(char* pathname, char* name_store) {
     if(pathname[0] == '/') {		//根目录不需要单独解析
         //路径中出现一个或多个连续字符'/'，则跳过
         while(*(++pathname) == '/');
@@ -372,7 +376,7 @@ int32_t sys_open(const char* pathname, uint8_t flags) {
 }
 
 //将文件描述符转换为文件表的下标
-static uint32_t fd_local2global(uint32_t local_fd) {
+uint32_t fd_local2global(uint32_t local_fd) {
     struct task_struct * cur = running_thread();
     int32_t global_fd = cur->fd_table[local_fd];
     ASSERT(global_fd >= 0 && global_fd < MAX_FILE_OPEN);
@@ -381,13 +385,23 @@ static uint32_t fd_local2global(uint32_t local_fd) {
 
 //关闭文件描述符fd指向的文件，成功返回0,失败返回-1
 int32_t sys_close(int32_t fd) {
-    int32_t ret = -1;        //返回值默认为-1,即失败
-    if(fd > 2) {
-        uint32_t _fd = fd_local2global(fd);
-        ret = file_close(&file_table[_fd]);
-        running_thread()->fd_table[fd] = -1;        //使文件描述符可用
+    int32_t ret = -1;   // 返回值默认为-1,即失败
+    if (fd > 2) {
+        uint32_t global_fd = fd_local2global(fd);
+        if (is_pipe(fd)) {
+	    /* 如果此管道上的描述符都被关闭,释放管道的环形缓冲区 */
+	    if (--file_table[global_fd].fd_pos == 0) {
+	        mfree_page(PF_KERNEL, file_table[global_fd].fd_inode, 1);
+	        file_table[global_fd].fd_inode = NULL;
+	    }
+	    ret = 0;
+        } 
+        else {
+	        ret = file_close(&file_table[global_fd]);
+        }
+        running_thread()->fd_table[fd] = -1; // 使该文件描述符位可用
     }
-    return ret;
+   return ret;
 }
 
 //将buf中连续count个字节写入文件描述符fd,成功则返回写入的字节数，失败则返回-1
@@ -396,35 +410,73 @@ int32_t sys_write(int32_t fd, const void* buf, uint32_t count) {
         printk("sys_write: fd error\n");
         return -1;
     }
-    if(fd == stdout_no) {
-        char tmp_buf[1024] = {0};
-        memcpy(tmp_buf, buf, count);
-        console_put_str(tmp_buf);
-        return count;
-    }
-    uint32_t _fd = fd_local2global(fd);
-    struct file* wr_file = &file_table[_fd];		//*******之前将fd_table[_fd]改为file_table[-fd]
-    if(wr_file->fd_flag & O_WRONLY || wr_file->fd_flag & O_RDWR) {
-        uint32_t bytes_written = file_write(wr_file, buf, count);
-        return bytes_written;
-    }
+    if (fd == stdout_no) {  
+        /* 标准输出有可能被重定向为管道缓冲区, 因此要判断 */
+        if (is_pipe(fd)) {
+	        return pipe_write(fd, buf, count);
+        } 
+        else {
+	        char tmp_buf[1024] = {0};
+	        memcpy(tmp_buf, buf, count);
+	        console_put_str(tmp_buf);
+	        return count;
+        }
+    } 
+    else if (is_pipe(fd)){	    /* 若是管道就调用管道的方法 */
+        return pipe_write(fd, buf, count);
+    } 
     else {
-        console_put_str("sys_write: not allowed to write file without flag O_RDWR or O_WRONLY\n");
-        return -1;
+        uint32_t _fd = fd_local2global(fd);
+        struct file* wr_file = &file_table[_fd];
+        if (wr_file->fd_flag & O_WRONLY || wr_file->fd_flag & O_RDWR) {
+	        uint32_t bytes_written  = file_write(wr_file, buf, count);
+	        return bytes_written;
+        } 
+        else {
+	        console_put_str("sys_write: not allowed to write file without flag O_RDWR or O_WRONLY\n");
+	        return -1;
+        }
     }
 }
 
 //从文件描述符fd指向的文件中读取count个字节到buf中，成功返回读取的字节数，失败则返回-1
 int32_t sys_read(int32_t fd, void* buf, uint32_t count) {
-    if(fd < 0){
-        printk("sys_read: fd error\n");
-        return -1;
-    }
-    // printk("asd");
     ASSERT(buf != NULL);
-    uint32_t _fd = fd_local2global(fd);
+    int32_t ret = -1;
+    uint32_t global_fd = 0;
+    if (fd < 0 || fd == stdout_no || fd == stderr_no) {
+        printk("sys_read: fd error\n");
+    } 
+    else if (fd == stdin_no) {
+        /* 标准输入有可能被重定向为管道缓冲区, 因此要判断 */
+        if (is_pipe(fd)) {
+	        ret = pipe_read(fd, buf, count);
+        } 
+        else {
+	        char* buffer = buf;
+	        uint32_t bytes_read = 0;
+	        while (bytes_read < count) 
+            {
+	            *buffer = ioq_getchar(&kbd_buf);
+	            bytes_read++;
+	            buffer++;
+	        }
+	    ret = (bytes_read == 0 ? -1 : (int32_t)bytes_read);
+        }
+    } 
+    else if (is_pipe(fd)) {	 /* 若是管道就调用管道的方法 */
+        ret = pipe_read(fd, buf, count);
+    } 
+    else {
+        global_fd = fd_local2global(fd);
+        ret = file_read(&file_table[global_fd], buf, count);   
+    }
+    return ret;
+    // printk("asd");
+    //ASSERT(buf != NULL);
+    //uint32_t _fd = fd_local2global(fd);
     // printk("here is sys_read, fd = %d, _fd = %d\n");
-    return file_read(&file_table[_fd], buf, count);
+    //return file_read(&file_table[_fd], buf, count);
 }
 
 //重置用于文件读写操作的便宜指针，成功时返回新的偏移量，出错时返回-1
@@ -775,30 +827,30 @@ char* sys_getcwd(char* buf, uint32_t size) {
     //系统调用getcwd中要为用户进程通过malloc分配内存
     ASSERT(buf != NULL);
     void* io_buf = sys_malloc(SECTOR_SIZE);
-    if(io_buf == NULL) {
+    if (io_buf == NULL) {
         return NULL;
     }
-
     struct task_struct* cur_thread = running_thread();
     int32_t parent_inode_nr = 0;
     int32_t child_inode_nr = cur_thread->cwd_inode_nr;
-    ASSERT(child_inode_nr >=0 && child_inode_nr < 4096);        //最大支持4096个inode
-    //若当前目录是根目录，直接返回
-    if(child_inode_nr == 0) {
+    ASSERT(child_inode_nr >= 0 && child_inode_nr < 4096);      // 最大支持4096个inode
+    /* 若当前目录是根目录,直接返回'/' */
+    if (child_inode_nr == 0) {
         buf[0] = '/';
         buf[1] = 0;
+        sys_free(io_buf);
         return buf;
     }
 
     memset(buf, 0, size);
-    char full_path_reverse[MAX_PATH_LEN] ;        //用来做全路径的缓冲区
+    char full_path_reverse[MAX_PATH_LEN] = {0};	  // 用来做全路径缓冲区
 
     /* 从下往上逐层找父目录,直到找到根目录为止.
-    * 当child_inode_nr为根目录的inode编号(0)时停止,
-    * 即已经查看完根目录中的目录项 */
-    while((child_inode_nr)) {
+     * 当child_inode_nr为根目录的inode编号(0)时停止,
+     * 即已经查看完根目录中的目录项 */
+    while ((child_inode_nr)) {
         parent_inode_nr = get_parent_dir_inode_nr(child_inode_nr, io_buf);
-        if(get_child_dir_name(parent_inode_nr, child_inode_nr, full_path_reverse, io_buf) == -1) {
+        if (get_child_dir_name(parent_inode_nr, child_inode_nr, full_path_reverse, io_buf) == -1) {	  // 或未找到名字,失败退出
             sys_free(io_buf);
             return NULL;
         }
@@ -808,14 +860,15 @@ char* sys_getcwd(char* buf, uint32_t size) {
     /* 至此full_path_reverse中的路径是反着的,
      * 即子目录在前(左),父目录在后(右) ,
      * 现将full_path_reverse中的路径反置 */
-   char* last_slash;	// 用于记录字符串中最后一个斜杠地址
-   while((last_slash = strrchr(full_path_reverse, '/'))) {
-       uint16_t len = strlen(buf);
-       strcpy(buf + len, last_slash);
-       //在full_path_reverse中添加结束字符，作为下一次执行strcpy中last_slash的边界
-       *last_slash = 0;
-   }
-   sys_free(io_buf);
+    char* last_slash;	// 用于记录字符串中最后一个斜杠地址
+    while ((last_slash = strrchr(full_path_reverse, '/'))) {
+        uint16_t len = strlen(buf);
+        strcpy(buf + len, last_slash);
+        /* 在full_path_reverse中添加结束字符,做为下一次执行strcpy中last_slash的边界 */
+        *last_slash = 0;
+    }
+    sys_free(io_buf);
+    return buf;
 }
 
 //更改当前工作目录为绝对路径path,成功返回0,失败返回-1
@@ -864,6 +917,11 @@ int32_t sys_stat(const char* path, struct stat* buf) {
     }
     dir_close(searched_record.parent_dir);
     return ret;
+}
+
+//向屏幕输出一个字符
+void sys_putchar(char char_asci) {
+    console_put_char(char_asci);
 }
 
 //在磁盘上搜索文件系统，若没有则格式化分区创建文件系统
