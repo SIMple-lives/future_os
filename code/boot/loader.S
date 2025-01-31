@@ -198,44 +198,44 @@ p_mode_start:
     ;jmp $
 
 ; 创建页目录表和页表并初始化内存位图
-call setup_page
+    call setup_page
 
-;要将描述符地址以及偏移量写入内存 gdt_ptr ，一会用新的地址重新加载
-sgdt [gdt_ptr]  ;存储到原来的gdt_ptr中
+    ;要将描述符地址以及偏移量写入内存 gdt_ptr ，一会用新的地址重新加载
+    sgdt [gdt_ptr]  ;存储到原来的gdt_ptr中
 
-;将gdt描述符中视频段描述符中的段基址+0xc0000000
-mov ebx , [gdt_ptr + 2]
-or dword [ebx + 0x18 + 4] , 0xc0000000
-;视频段是第三个段描述符，每个描述符大小是8字节，故偏移量是0x18
-;段描述符的高4字节的最高位是段基址的第31~24位
+    ;将gdt描述符中视频段描述符中的段基址+0xc0000000
+    mov ebx , [gdt_ptr + 2]
+    or dword [ebx + 0x18 + 4] , 0xc0000000
+    ;视频段是第三个段描述符，每个描述符大小是8字节，故偏移量是0x18
+    ;段描述符的高4字节的最高位是段基址的第31~24位
 
-;将gdt的基址加上0xc0000000 使其成为内核所在的高地址
-add dword [gdt_ptr + 2] , 0xc0000000
+    ;将gdt的基址加上0xc0000000 使其成为内核所在的高地址
+    add dword [gdt_ptr + 2] , 0xc0000000
 
-add esp , 0xc0000000    ;将栈指针同样映射到内核地址
+    add esp , 0xc0000000    ;将栈指针同样映射到内核地址
 
-; 把页目录地址赋给cr3
-mov eax , PAGE_DIR_TABLE_POS
-mov cr3 , eax
+    ; 把页目录地址赋给cr3
+    mov eax , PAGE_DIR_TABLE_POS
+    mov cr3 , eax
 
-; 打开cr0的PG位(第31位)，开启分页
-mov eax , cr0
-or eax , 0x80000000
-mov cr0 , eax
+    ; 打开cr0的PG位(第31位)，开启分页
+    mov eax , cr0
+    or eax , 0x80000000
+    mov cr0 , eax
 
-; 在开启分页后，用gdt新的地址重新加载
-lgdt [gdt_ptr]      ;重新加载
+    ; 在开启分页后，用gdt新的地址重新加载
+    lgdt [gdt_ptr]      ;重新加载
 
-;mov eax , SELECTOR_VIDEO
-;mov gs , eax
+    ;mov eax , SELECTOR_VIDEO
+    ;mov gs , eax
 
-jmp SELECTOR_CODE:enter_kernel
+    jmp SELECTOR_CODE:enter_kernel
 
 ;------ 跳转到kernel ------
-enter_kernel:
-    call kernel_init
-    mov esp , 0xc009f000
-    jmp KERNEL_ENTRY_POINT
+    enter_kernel:
+        call kernel_init
+        mov esp , 0xc009f000
+        jmp KERNEL_ENTRY_POINT
 ;mov byte [gs:160], 'G'
 
 ;jmp $
@@ -288,7 +288,8 @@ setup_page:
     or eax , PG_US_U | PG_RW_W | PG_P
     mov ebx , PAGE_DIR_TABLE_POS
     mov ecx , 254
-    mov esi , 769
+    mov esi , 769           ;  769表示页目录表中的第769个目录项  指向 0xc0000000 ~ 0xffffffff 共计 1GB 属于内核
+    ;   这段内核代码所有进程共享
 
 .craete_kernal_pde:
     mov [ebx + esi * 4] , eax

@@ -2,13 +2,13 @@
 ;------------------------------------------------------------
 %include "boot.inc"
 SECTION MBR vstart=0x7c00
-   mov ax,cs
-   mov ds,ax
+   mov ax,cs                ; 将代码段 寄存器 CS 的值送入 AX 寄存器
+   mov ds,ax                ; 将 DS 寄存器的值设为 CS 寄存器的值
    mov es,ax
    mov ss,ax
    mov fs,ax
    mov sp,0x7c00
-   mov ax,0xb800
+   mov ax,0xb800            ; 0xb800:0x0000 是显存地址
    mov gs,ax
 
 ; 清屏
